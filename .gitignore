@@ -1,0 +1,39 @@
+# -----------------------------
+# Python bytecode and cache
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+
+# -----------------------------
+# Python virtual environments
+# -----------------------------
+.venv/
+venv/
+ENV/
+env/
+lib/
+Lib/
+
+# -----------------------------
+# VSCode settings (local)
+# -----------------------------
+.vscode/
+
+# -----------------------------
+# macOS system files
+# -----------------------------
+.DS_Store
+
+# -----------------------------
+# Sensitive environment files
+# -----------------------------
+.env
+.env.*
+
+# -----------------------------
+# Logs and temporary files (optional)
+# -----------------------------
+*.log
+*.tmp
+*.bak
