@@ -28,3 +28,12 @@ def sql_value(v):
     if isinstance(v, (int, float, bool)):
         return str(v)
     return f"'{str(v)}'"  # fallback to string
+
+def normalize_query_params(params: dict) -> dict:
+    """
+    Converts UUID values to strings to make them safe for SQL execution.
+    """
+    return {
+        key: str(value) if isinstance(value, uuid.UUID) else value
+        for key, value in params.items()
+    }

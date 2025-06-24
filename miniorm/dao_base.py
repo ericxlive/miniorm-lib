@@ -1,6 +1,6 @@
 
 from datetime import datetime, time
-from miniorm.sql_utils import sql_value
+from miniorm.sql_utils import sql_value, normalize_query_params
 
 from miniorm.exceptions_base import (
     ConnectionError,
@@ -297,6 +297,10 @@ class Dao:
 
             # Normalize NULL comparisons
             query = query.replace('= null', 'IS NULL').replace('=null', 'IS NULL')
+
+            # Patch: Normalize UUIDs and other potential custom types
+            params = normalize_query_params(params)
+            #/Patch: Normalize UUIDs
 
             # Connect and execute
             try:

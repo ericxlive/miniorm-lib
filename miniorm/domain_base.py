@@ -65,6 +65,33 @@ class Domain(Object, ValidationObserver):
         super().__init__()
         self.join(**kwargs)
 
+        # Patch: Tuple-style foreign_keys (e.g., 'caller_id': ('member', 'Member'))
+        '''
+        for fk_field, mapping in getattr(self.__class__, 'foreign_keys', {}).items():
+            if isinstance(mapping, tuple):
+                nested_attr, _ = mapping
+                nested_obj = kwargs.get(nested_attr)
+                if nested_obj:
+                    # Tentativa: usar field name exato (ex: 'caller_id') ou fallback para .id
+                    value = getattr(nested_obj, fk_field, None) or getattr(nested_obj, 'id', None)
+                    if value:
+                        setattr(self, fk_field, value)
+        '''
+        # Patch: Tuple-style foreign_keys (e.g., 'caller_id': ('member', 'Member', 'caller_id'))
+        for fk_field, mapping in getattr(self.__class__, 'foreign_keys', {}).items():
+            if isinstance(mapping, tuple):
+                nested_attr = mapping[0]
+                lookup_field = mapping[2] if len(mapping) > 2 else fk_field  # usa o 3º se existir, senão usa o próprio fk_field
+
+                nested_obj = kwargs.get(nested_attr)
+                if nested_obj:
+                    value = getattr(nested_obj, lookup_field, None)
+                    if value:
+                        setattr(self, fk_field, value)
+        # /Patch
+
+        # /Patch
+
     def join(self, **kwargs):
         """
         Fluent interface for assigning foreign key relations dynamically.
@@ -206,7 +233,7 @@ class Domain(Object, ValidationObserver):
                         except ValueError:
                             pass
         
-    def encapsulate_nested(self, depth=1):
+    def v1encapsulate_nested(self, depth=1):
         from miniorm.lib_explorer import resolve_class_by_name
         """
         Automatically hydrates and assigns nested domain objects based on foreign key mappings.
@@ -255,6 +282,71 @@ class Domain(Object, ValidationObserver):
                 nested_instance.encapsulate_nested(depth=depth - 1)
                 setattr(self, nested_attr, nested_instance)
             # Apply cleanup if requested
+
+        if getattr(self, "clean_nested_keys", False):
+            self.cleanup_foreign_keys()
+
+        return self
+    
+    def encapsulate_nested(self, depth=1):
+        from miniorm.lib_explorer import resolve_class_by_name
+        """
+        Automatically hydrates and assigns nested domain objects based on foreign key mappings.
+
+        This method inspects the `foreign_keys` attribute defined in the domain class (if present),
+        and for each mapped foreign key field (e.g., 'member_id'), it dynamically:
+            1. Creates the corresponding domain instance (e.g., Member(id=member_id)).
+            2. Calls `.find()` on the instance to fully load its data from the database.
+            3. Assigns the fully hydrated domain object to a new attribute (e.g., self.member).
+
+        Depth Control:
+            - To avoid infinite recursion in case of cyclic or deeply nested foreign keys,
+            this method accepts a `depth` parameter.
+            - Default depth is 1: only immediate nested objects are hydrated.
+            - Each recursive call decrements the depth by 1.
+
+        If no `foreign_keys` attribute exists, or if any foreign key value is None,
+        the method skips that mapping gracefully.
+
+        After encapsulation, if clean_nested_keys is enabled, foreign key fields are removed.
+
+        Args:
+            depth (int): Maximum recursion depth for nested encapsulation. Default is 1.
+
+        Returns:
+            self: The current domain instance, fully hydrated with nested domain objects.
+        """
+        if depth <= 0:
+            return self
+
+        if not hasattr(self.__class__, 'foreign_keys'):
+            return self
+
+        for fk_field, domain_info in self.__class__.foreign_keys.items():
+            # Patch: support tuple-style mapping
+            if isinstance(domain_info, tuple):
+                # Format: (nested_attr, class_name_or_type, custom_lookup_field)
+                nested_attr = domain_info[0]
+                domain_class = domain_info[1]
+                lookup_field = domain_info[2] if len(domain_info) > 2 else 'id'
+            else:
+                nested_attr = fk_field.replace('_id', '')
+                domain_class = domain_info
+                lookup_field = 'id'
+            # /Patch
+
+            fk_value = getattr(self, fk_field, None)
+            if fk_value is not None:
+                # Patch: resolve class by name if it's a string
+                if isinstance(domain_class, str):
+                    domain_class = resolve_class_by_name(domain_class)
+                # /Patch
+
+                #nested_instance = domain_class(id=fk_value).find()
+                nested_instance = domain_class(**{lookup_field: fk_value}).find()
+
+                nested_instance.encapsulate_nested(depth=depth - 1)
+                setattr(self, nested_attr, nested_instance)
 
         if getattr(self, "clean_nested_keys", False):
             self.cleanup_foreign_keys()
@@ -326,6 +418,99 @@ class Domain(Object, ValidationObserver):
                 d.normalize_foreign_keys()
             d.encapsulate_nested()
         return domains
+    
+    # Joint_Find Methods:
+    def call_dao_method(self, method_name: str, **params):
+        """
+        Calls a custom method on the DAO with the given parameters,
+        and encapsulates the result if DTOs are returned.
+
+        Args:
+            method_name (str): The name of the DAO method to invoke.
+            **params: Parameters to pass to the DAO method.
+
+        Returns:
+            list[Domain] | Domain | any: Encapsulated domain objects if DTOs are returned,
+            otherwise returns raw results (e.g., bool, str).
+        """
+        self.__dao__ = ReflectionUtils.new_instance(blueprint=self.dao)
+
+        dao_method = getattr(self.__dao__, method_name, None)
+        if not callable(dao_method):
+            raise AttributeError(f"Method '{method_name}' not found in DAO.")
+
+        result = dao_method(**params)
+
+        if result is None:
+            return None
+
+        if isinstance(result, list):
+            if not result:
+                return []
+            if hasattr(result[0], 'sync'):
+                domains = self.encapsulate(dto_list=result)
+                for d in domains:
+                    if hasattr(d, "normalize_foreign_keys"):
+                        d.normalize_foreign_keys()
+                    d.encapsulate_nested()
+                return domains
+            return result  # list of primitives
+
+        if hasattr(result, 'sync'):
+            domain = self.encapsulate(dto_list=[result])[0]
+            if hasattr(domain, "normalize_foreign_keys"):
+                domain.normalize_foreign_keys()
+            domain.encapsulate_nested()
+            return domain
+
+        return result  # primitive
+    
+    def joint_find(self, query: str, **params):
+        """
+        Executes a custom join query using the DAO layer and processes the result appropriately.
+
+        Behavior:
+        - If the result is a list of DTOs, encapsulates them as domain objects.
+        - If the result is a single DTO, encapsulates and returns it.
+        - If the result is a list of primitives (str, bool, int...), returns as-is.
+        - If the result is a single primitive value, returns as-is.
+
+        Args:
+            query (str): SQL query with <param> placeholders.
+            **params: Named parameters used in the query.
+
+        Returns:
+            list[Domain] | Domain | any: Encapsulated domain objects or primitive results.
+        """
+        self.__dao__ = ReflectionUtils.new_instance(blueprint=self.dao)
+        dto_model = self.__dao__.model
+        result = self.__dao__.joint_find(query=query, dto_model=dto_model, **params)
+
+        if result is None:
+            return None
+
+        if isinstance(result, list):
+            if not result:
+                return []
+            if hasattr(result[0], 'sync'):
+                domains = self.encapsulate(dto_list=result)
+                for d in domains:
+                    if hasattr(d, "normalize_foreign_keys"):
+                        d.normalize_foreign_keys()
+                    d.encapsulate_nested()
+                return domains
+            return result  # list of primitives
+
+        if hasattr(result, 'sync'):
+            domain = self.encapsulate(dto_list=[result])[0]
+            if hasattr(domain, "normalize_foreign_keys"):
+                domain.normalize_foreign_keys()
+            domain.encapsulate_nested()
+            return domain
+
+        return result  # primitive
+
+    #/Joint_find methods.
     
     @classmethod
     def encapsulate(cls, dto_list):
@@ -566,7 +751,7 @@ class Domain(Object, ValidationObserver):
             if hasattr(self, fk_field):
                 delattr(self, fk_field)
 
-    def normalize_foreign_keys(self):
+    def v0normalize_foreign_keys(self):
         """
         Recursively converts any *_id string attributes and main `id` field to UUID objects (if valid),
         and applies the same normalization to any nested foreign key domain objects.
@@ -583,6 +768,39 @@ class Domain(Object, ValidationObserver):
                 setattr(self, attr_name, uuid.UUID(value))
             elif isinstance(value, Domain):
                 value.normalize_foreign_keys()
+
+        return self  # Allow method chaining
+    
+    def normalize_foreign_keys(self):
+        """
+        Recursively converts any *_id string attributes and main `id` field to UUID objects (if valid),
+        and applies the same normalization to any nested foreign key domain objects.
+        """
+        import uuid
+        from miniorm.uuid_utils import is_valid_uuid
+
+        # Convert self.id if needed
+        if hasattr(self, "id") and isinstance(self.id, str) and is_valid_uuid(self.id):
+            self.id = uuid.UUID(self.id)
+
+        # Patch for tuple-based foreign_keys support
+        fk_mappings = {}
+        for fk_field, mapping in getattr(self, 'foreign_keys', {}).items():
+            if isinstance(mapping, tuple):
+                attr_name = mapping[0]
+            else:
+                attr_name = fk_field.replace('_id', '')
+            fk_mappings[attr_name] = fk_field
+        # /Patch
+
+        for attr_name, value in vars(self).items():
+            # Patch for foreign key normalization using tuple-aware mapping
+            fk_field = fk_mappings.get(attr_name, attr_name)
+            if fk_field.endswith('_id') and isinstance(value, str) and is_valid_uuid(value):
+                setattr(self, fk_field, uuid.UUID(value))
+            elif isinstance(value, Domain):
+                value.normalize_foreign_keys()
+            # /Patch
 
         return self  # Allow method chaining
 
