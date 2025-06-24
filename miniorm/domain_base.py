@@ -322,31 +322,33 @@ class Domain(Object, ValidationObserver):
         if not hasattr(self.__class__, 'foreign_keys'):
             return self
 
-        for fk_field, domain_info in self.__class__.foreign_keys.items():
-            # Patch: support tuple-style mapping
-            if isinstance(domain_info, tuple):
-                # Format: (nested_attr, class_name_or_type, custom_lookup_field)
-                nested_attr = domain_info[0]
-                domain_class = domain_info[1]
-                lookup_field = domain_info[2] if len(domain_info) > 2 else 'id'
-            else:
-                nested_attr = fk_field.replace('_id', '')
-                domain_class = domain_info
-                lookup_field = 'id'
-            # /Patch
-
-            fk_value = getattr(self, fk_field, None)
-            if fk_value is not None:
-                # Patch: resolve class by name if it's a string
-                if isinstance(domain_class, str):
-                    domain_class = resolve_class_by_name(domain_class)
+        from miniorm.log_control import log_suppressed
+        with log_suppressed():
+            for fk_field, domain_info in self.__class__.foreign_keys.items():
+                # Patch: support tuple-style mapping
+                if isinstance(domain_info, tuple):
+                    # Format: (nested_attr, class_name_or_type, custom_lookup_field)
+                    nested_attr = domain_info[0]
+                    domain_class = domain_info[1]
+                    lookup_field = domain_info[2] if len(domain_info) > 2 else 'id'
+                else:
+                    nested_attr = fk_field.replace('_id', '')
+                    domain_class = domain_info
+                    lookup_field = 'id'
                 # /Patch
 
-                #nested_instance = domain_class(id=fk_value).find()
-                nested_instance = domain_class(**{lookup_field: fk_value}).find()
+                fk_value = getattr(self, fk_field, None)
+                if fk_value is not None:
+                    # Patch: resolve class by name if it's a string
+                    if isinstance(domain_class, str):
+                        domain_class = resolve_class_by_name(domain_class)
+                    # /Patch
 
-                nested_instance.encapsulate_nested(depth=depth - 1)
-                setattr(self, nested_attr, nested_instance)
+                    #nested_instance = domain_class(id=fk_value).find()
+                    nested_instance = domain_class(**{lookup_field: fk_value}).find()
+
+                    nested_instance.encapsulate_nested(depth=depth - 1)
+                    setattr(self, nested_attr, nested_instance)
 
         if getattr(self, "clean_nested_keys", False):
             self.cleanup_foreign_keys()
@@ -367,7 +369,7 @@ class Domain(Object, ValidationObserver):
         dto_list = self.__dao__.list()
         return self.encapsulate(dto_list)
 
-    @validate
+    @validate # load_nested: bool = True
     def find(self):
         """
         Attempts to retrieve a single domain object from the data source 
@@ -388,7 +390,10 @@ class Domain(Object, ValidationObserver):
         if obj:
             self.sync(obj)
             self.normalize_foreign_keys()
+            # Patch: load_nested.
+            #if load_nested:
             self.encapsulate_nested()
+            #/Patch: load_nested.    
         return self
     
     @validate

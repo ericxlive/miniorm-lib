@@ -1,4 +1,5 @@
 from datetime import datetime, date, time
+from miniorm.log_control import suppress_logs as should_suppress_logs
 
 def print_color(text, color="RED"):
     colors = {
@@ -13,7 +14,11 @@ def print_color(text, color="RED"):
 def query_format(text):
     return " ".join(text.split()).strip()
 
-def log(query: str, params: dict = None, color: str = "RED"):
+def log(query: str, params: dict = None, color: str = "PURPLE"):
+    # It wont show logs when nested objects are to be loaded and the queries are no important.
+    if should_suppress_logs():
+        return
+    
     if params:
         for key, value in params.items():
             if isinstance(value, str):
@@ -28,4 +33,4 @@ def log(query: str, params: dict = None, color: str = "RED"):
     
     formatted = query_format(query)
     print_color(formatted, color)
-    print("")  # Linha em branco para espaçamento visual
+    print("")  
