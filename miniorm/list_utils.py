@@ -1,6 +1,6 @@
 import json
 
-def print_as_json(objects: list):
+def display(objects: list):
     """
     Pretty prints a list of domain objects as JSON, assuming each object 
     implements __str__ to return a valid JSON string.

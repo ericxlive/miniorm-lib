@@ -232,62 +232,7 @@ class Domain(Object, ValidationObserver):
                             setattr(self, fk_field, uuid.UUID(value))
                         except ValueError:
                             pass
-        
-    def v1encapsulate_nested(self, depth=1):
-        from miniorm.lib_explorer import resolve_class_by_name
-        """
-        Automatically hydrates and assigns nested domain objects based on foreign key mappings.
-
-        This method inspects the `foreign_keys` attribute defined in the domain class (if present),
-        and for each mapped foreign key field (e.g., 'member_id'), it dynamically:
-            1. Creates the corresponding domain instance (e.g., Member(id=member_id)).
-            2. Calls `.find()` on the instance to fully load its data from the database.
-            3. Assigns the fully hydrated domain object to a new attribute (e.g., self.member).
-
-        Depth Control:
-            - To avoid infinite recursion in case of cyclic or deeply nested foreign keys,
-            this method accepts a `depth` parameter.
-            - Default depth is 1: only immediate nested objects are hydrated.
-            - Each recursive call decrements the depth by 1.
-
-        If no `foreign_keys` attribute exists, or if any foreign key value is None,
-        the method skips that mapping gracefully.
-
-        After encapsulation, if clean_nested_keys is enabled, foreign key fields are removed.
-
-        Args:
-            depth (int): Maximum recursion depth for nested encapsulation. Default is 1.
-
-        Returns:
-            self: The current domain instance, fully hydrated with nested domain objects.
-        """
-        if depth <= 0:
-            return self
-
-        if not hasattr(self.__class__, 'foreign_keys'):
-            return self
-
-        for fk_field, domain_class in self.__class__.foreign_keys.items():
-            fk_value = getattr(self, fk_field, None)
-            if fk_value is not None:
-                nested_attr = fk_field.replace('_id', '')
-
-                # Patch: when FK is defined as literal/String.
-                if isinstance(domain_class, str):
-                    domain_class = resolve_class_by_name(domain_class)
-                # /Patch
-
-                nested_instance = domain_class(id=fk_value).find()
-                # Recursive call with depth control
-                nested_instance.encapsulate_nested(depth=depth - 1)
-                setattr(self, nested_attr, nested_instance)
-            # Apply cleanup if requested
-
-        if getattr(self, "clean_nested_keys", False):
-            self.cleanup_foreign_keys()
-
-        return self
-    
+            
     def encapsulate_nested(self, depth=1):
         from miniorm.lib_explorer import resolve_class_by_name
         """
@@ -357,17 +302,15 @@ class Domain(Object, ValidationObserver):
     
     def list(self):
         """
-        Retrieves all records of the domain entity from the database table.
+        Retrieves all records of the domain entity from the database table,
+        without applying any filters.
 
-        This method internally uses the DAO's list() method to fetch all records, 
-        and then transforms them into domain objects with optional nested encapsulation.
+        This is equivalent to calling `find_all()` without setting any attributes.
 
         Returns:
-            list: A list of domain instances fully hydrated (with nested foreign keys if defined).
+            list: A list of domain instances, optionally with nested encapsulation.
         """
-        self.__dao__ = ReflectionUtils.new_instance(blueprint=self.dao)
-        dto_list = self.__dao__.list()
-        return self.encapsulate(dto_list)
+        return self.__class__().find_all()
 
     @validate # load_nested: bool = True
     def find(self):
@@ -755,26 +698,6 @@ class Domain(Object, ValidationObserver):
         for fk_field in self.__class__.foreign_keys.keys():
             if hasattr(self, fk_field):
                 delattr(self, fk_field)
-
-    def v0normalize_foreign_keys(self):
-        """
-        Recursively converts any *_id string attributes and main `id` field to UUID objects (if valid),
-        and applies the same normalization to any nested foreign key domain objects.
-        """
-        import uuid
-        from miniorm.uuid_utils import is_valid_uuid
-
-        # Convert self.id if needed
-        if hasattr(self, "id") and isinstance(self.id, str) and is_valid_uuid(self.id):
-            self.id = uuid.UUID(self.id)
-
-        for attr_name, value in vars(self).items():
-            if attr_name.endswith('_id') and isinstance(value, str) and is_valid_uuid(value):
-                setattr(self, attr_name, uuid.UUID(value))
-            elif isinstance(value, Domain):
-                value.normalize_foreign_keys()
-
-        return self  # Allow method chaining
     
     def normalize_foreign_keys(self):
         """
