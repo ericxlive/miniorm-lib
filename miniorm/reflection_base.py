@@ -361,3 +361,19 @@ class ReflectionUtils:
             if k not in ignore:
                 result[k] = v
         return result
+    
+    # Support to lists [] inside the domain class. It will return a list from related table.
+    # Product vs Items. Items hold id of product. So if product is listed it will also hold
+    # the items list []
+    @staticmethod
+    def get_nested_list_metadata(domain_cls):
+        metadata = {}
+        for attr_name in dir(domain_cls):
+            attr = getattr(domain_cls, attr_name, None)
+            if callable(attr) and hasattr(attr, "_nested_list"):
+                info = attr._nested_list
+                metadata[attr_name] = {
+                    "class": info["target"],
+                    "foreign_key": info["foreign_key"]
+                }
+        return metadata

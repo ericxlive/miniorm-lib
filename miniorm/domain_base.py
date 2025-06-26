@@ -295,6 +295,20 @@ class Domain(Object, ValidationObserver):
                     nested_instance.encapsulate_nested(depth=depth - 1)
                     setattr(self, nested_attr, nested_instance)
 
+            # @nested_list support begins
+            nested_lists = ReflectionUtils.get_nested_list_metadata(self.__class__)
+            if nested_lists:
+                for attr_name, info in nested_lists.items():
+                    target_cls = resolve_class_by_name(info['class'])
+                    foreign_key = info['foreign_key']
+
+                    if target_cls:
+                        related_items = target_cls(**{foreign_key: self.id}).find_all()
+
+                        # Substitui qualquer método ou atributo existente com o mesmo nome
+                        object.__setattr__(self, attr_name, related_items)  
+            # @nested_list support ends
+
         if getattr(self, "clean_nested_keys", False):
             self.cleanup_foreign_keys()
 
