@@ -192,13 +192,18 @@ class Domain(Object, ValidationObserver):
                 if obj and hasattr(obj, 'id'):
                     setattr(self, fk_field, obj.id)
 
+        # Ignore @nested_list attributes
+        nested_list_fields = ReflectionUtils.get_nested_list_metadata(self.__class__).keys()
+        # /Ignore @nested_list attributes
+
         # Create a fresh DTO instance
         new_obj = ReflectionUtils.new_instance(blueprint=self.dto)
 
         # Copy only attributes that are defined in the DTO
         dto_fields = vars(new_obj).keys()
         for key, value in vars(self).items():
-            if key in dto_fields:
+            # Ignore @nested_list attributes: Added: and key not in nested_list_fields (down below)
+            if key in dto_fields and key not in nested_list_fields: 
                 setattr(new_obj, key, value)
 
         return new_obj
