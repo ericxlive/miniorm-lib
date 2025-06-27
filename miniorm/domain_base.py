@@ -663,6 +663,26 @@ class Domain(Object, ValidationObserver):
         except Exception:
             raise SaveOperationError(dto=self.as_dto())
 
+    def delete(self) -> bool:
+        """
+        Deletes the current domain object from the database using its DAO.
+
+        Returns
+        -------
+        bool
+            True if deletion was successful.
+
+        Raises
+        ------
+        ValueError
+            If the domain object has no 'id' set.
+        """
+        if not self.id:
+            raise ValueError(f"Cannot delete {self.__class__.__name__}: 'id' is missing.")
+
+        dto = self.as_dto()
+        return self.get_dao().delete(dto)
+
     def sync(self, obj, ignore_private=False):
         """
         Synchronizes the Domain object from a DTO, dictionary, or another domain instance.

@@ -393,3 +393,24 @@ class Dao:
             raise SqlSyntaxError(e, query)
         except Exception as e:
             raise QueryExecutionError(e, query)
+        
+    def delete(self, dto):
+        """
+        Deletes a record from the database based on the primary key in the provided DTO.
+
+        Parameters
+        ----------
+        dto : Dto
+            The DTO instance containing the primary key of the record to delete.
+
+        Returns
+        -------
+        bool
+            True if the deletion was successful.
+        """
+        if not dto or not dto.id:
+            raise MissingParameterError("DTO with a valid 'id' is required for deletion.")
+
+        query = f"DELETE FROM {dto.table} WHERE id = %s"
+        self.execute(query, (str(dto.id),))
+        return True
