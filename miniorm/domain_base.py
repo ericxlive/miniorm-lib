@@ -129,33 +129,6 @@ class Domain(Object, ValidationObserver):
 
         return self
 
-    def join2(self, **kwargs):
-        """
-        Fluent interface to assign foreign key relationships via domain objects.
-
-        Allows passing domain objects (ex: member=Member()) and automatically assigns 
-        both the FK ID and object reference, based on foreign_keys mapping.
-
-        Supports chaining.
-
-        Args:
-            **kwargs: Arbitrary domain or scalar attributes.
-
-        Returns:
-            self
-        """
-        foreign_keys = getattr(self.__class__, 'foreign_keys', {})
-
-        for key, value in kwargs.items():
-            if key in foreign_keys and isinstance(value, Domain):
-                fk_field = f"{key}_id"
-                setattr(self, fk_field, value.id)
-                setattr(self, key, value)
-            else:
-                setattr(self, key, value)
-
-        return self
-    
     '''The function returns the dao previously created. If no dao was created then it will
       create and return the dao instance.'''
     def getdao(self):
