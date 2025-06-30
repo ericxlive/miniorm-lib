@@ -8,6 +8,10 @@ from miniorm.exceptions_base import SaveOperationError, UpdateOperationError
 
 from miniorm.validation_base import ValidationObserver, validate
 
+from typing import TypeVar, List
+
+T = TypeVar('T', bound='Domain')
+
 class Domain(Object, ValidationObserver):
     """
     Base class for all domain models that require reflection-based operations.
@@ -305,7 +309,7 @@ class Domain(Object, ValidationObserver):
         return self.__class__().find_all()
 
     @validate # load_nested: bool = True
-    def find(self):
+    def find(self: T) -> T:
         """
         Attempts to retrieve a single domain object from the data source 
         that matches the current object's DTO representation.
@@ -332,7 +336,7 @@ class Domain(Object, ValidationObserver):
         return self
     
     @validate
-    def find_all(self):
+    def find_all(self: T) -> List[T]:
         
         """
         Retrieves all domain objects from the data source that match the 
@@ -482,7 +486,7 @@ class Domain(Object, ValidationObserver):
         return result
     
     @validate
-    def update(self):
+    def update(self: T) -> T:
         """
         Updates the current domain object in the database.
 
@@ -528,7 +532,7 @@ class Domain(Object, ValidationObserver):
             raise UpdateOperationError(dto=self.as_dto(), message=str(e))
 
     @validate
-    def save(self, allow_duplicates: bool = False):
+    def save(self: T, allow_duplicates: bool = False) -> T:
         """
         Inserts the current domain object into the database.
 
@@ -573,7 +577,7 @@ class Domain(Object, ValidationObserver):
             raise SaveOperationError(dto=self.as_dto())
 
     @validate
-    def persist(self, allow_duplicates: bool = False):
+    def persist(self: T, allow_duplicates: bool = False) -> T:
         """
         Persists the current domain object to the database.
 
