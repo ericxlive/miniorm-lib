@@ -511,7 +511,10 @@ class Domain(Object, ValidationObserver):
                 raise UpdateOperationError(dto=self.as_dto())
 
             # Return refreshed object from DB
-            obj = self.__dao__.find_one(dto=self.as_dto())
+            # obj = self.__dao__.find_one(dto=self.as_dto())
+            # Return refreshed object from DB (reload by primary key only)
+            reload_dto = self.as_dto().__class__(id=self.id)
+            obj = self.__dao__.find_one(dto=reload_dto, raise_if_not_found=True)
 
             # Sync and encapsulate into current instance
             self.sync(obj)

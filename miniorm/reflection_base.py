@@ -1,6 +1,7 @@
 
 import re
 import uuid
+import json
 
 '''Every class is to be considered a subclass of Object to access Reflection support.'''    
 class Object:
@@ -145,6 +146,43 @@ class MutableObject(Object):
                     setattr(obj, key, value)
 
         deep_update(self, data)
+
+    def set(self, key: str, value):
+        """Adds attribute(s) dynamically."""
+        setattr(self, key, value)
+
+    def add(self, **kwargs):
+        for key, value in kwargs.items():
+            if isinstance(value, dict):
+                value = Shell(**value)
+            setattr(self, key, value)
+
+    def as_json(data):
+        
+        if isinstance(data, str):
+            try:
+                return json.loads(data)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid String for JSON: {e}")
+        elif isinstance(data, dict):
+            return data
+        else:
+            raise TypeError("The entry param should be dict or string JSON.")
+        
+    def __str__(self):
+        def serialize(obj):
+            if isinstance(obj, (str, int, float, bool)) or obj is None:
+                return obj
+            elif isinstance(obj, dict):
+                return {k: serialize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [serialize(item) for item in obj]
+            elif hasattr(obj, '__dict__'):
+                return serialize(obj.__dict__)
+            else:
+                return str(obj)
+
+        return json.dumps(serialize(self), indent=4)
         
 '''Clean Shell class to be used. No other method to be added. This class is just to 
    encapsulate others class objects in order to display the objects in a JSON format.'''
